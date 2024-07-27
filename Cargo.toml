@@ -1,0 +1,11 @@
+[package]
+name = "password_manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sha2 = "0.9.1"
+hex = "0.4.3"
+aes = "0.6.0"
+block-modes = "0.6.0"
+block_cipher_trait = "0.8.0"
