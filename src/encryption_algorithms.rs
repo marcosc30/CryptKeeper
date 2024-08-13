@@ -1,40 +1,76 @@
-use std::string;
+extern crate crypto;
+extern crate hex;
+extern crate rand;
 
-// 1. Hash the master password using SHA-256
 use sha2::{Sha256, Digest};
-use hex;
-use aes::Aes256;
+use crypto::aes::KeySize::KeySize256;
+use crypto::aes::cbc_encryptor;
+use crypto::blockmodes::PkcsPadding;
+use crypto::buffer::{BufferResult, ReadBuffer, RefReadBuffer, RefWriteBuffer, WriteBuffer};
 use rand::Rng;
-use block_cipher::generic_array::GenericArray;
-use block_cipher::BlockCipher;
-use block_modes::BlockMode;
-use block_modes::block_padding::Pkcs7;
-use block_modes::block_padding::Pkcs7;
+use std::str;
+use crypto::aes::cbc_decryptor;
 
-pub fn hash_master(password: &str) -> String {
+pub fn hash_master(password: &str) -> u8 {
+    // If I was making this on the cloud, or to make an improvement, I'd add a salt to the password
     let converted_password = password.as_bytes();
     let mut hasher = Sha256::new();
     hasher.update(converted_password);
     let result = hasher.finalize();
-    hex::encode(result)
+    result[0]
 }
 
 // 2. Encrypt a given password using the master password
 
-pub fn encrypt_password(password: &str, hashed_master: &str) -> [String; [u8; 16]] {
-    //let hashed_master = hash_master(master_password);
-    let key = hashed_master.as_bytes();
+pub fn encrypt_password(password: &str, key: &[u8]) -> Vec<u8> {
+    // Generate a random IV
     let iv: [u8; 16] = rand::thread_rng().gen();
-    let cipher = Cbc::<Aes256, Pkcs7>::new_var(&key, &iv).unwrap();
-    let result = cipher.encrypt_vec(password.as_bytes());
-    [string::from_utf8(result).expect("Error converting to string during encryption"), iv]
+
+    // Create an encryptor instance
+    let mut encryptor = cbc_encryptor(KeySize256, key, &iv, PkcsPadding);
+
+    // Buffer setup
+    let mut read_buffer = RefReadBuffer::new(password.as_bytes());
+    let mut buffer = [0; 4096];
+    let mut write_buffer = RefWriteBuffer::new(&mut buffer);
+
+    // Perform encryption
+    let mut encrypted_data = Vec::new();
+    loop {
+        let result = encryptor.encrypt(&mut read_buffer, &mut write_buffer, true).unwrap();
+        encrypted_data.extend(write_buffer.take_read_buffer().take_remaining().iter().copied());
+
+        match result {
+            BufferResult::BufferUnderflow => break,
+            BufferResult::BufferOverflow => {}
+        }
+    }
+
+    // Combine IV and ciphertext
+    [iv.to_vec(), encrypted_data].concat()
 }
 
-pub fn decrypt_password(encrypted_password: Vec<u8>, iv:[u8; 16], master_password: &str) -> String {
-    let hashed_master = hash_master(master_password);
-    let key = hashed_master.as_bytes();
-    let cipher = Cbc::<Aes256, Pkcs7>::new_var(&key, &iv).unwrap();
-    let result = cipher.decrypt_vec(&encrypted_password).unwrap();
-    string::from_utf8(result).expect("Error converting to string during decryption")
+// Decrypt the password
 
+pub fn decrypt_password(encrypted_data: &[u8], key: &[u8]) -> String {
+    let (iv, ciphertext) = encrypted_data.split_at(16);
+
+    let mut decryptor = cbc_decryptor(KeySize256, key, iv, PkcsPadding);
+
+    let mut read_buffer = RefReadBuffer::new(ciphertext);
+    let mut buffer = [0; 4096];
+    let mut write_buffer = RefWriteBuffer::new(&mut buffer);
+
+    let mut decrypted_data = Vec::new();
+    loop {
+        let result = decryptor.decrypt(&mut read_buffer, &mut write_buffer, true).unwrap();
+        decrypted_data.extend(write_buffer.take_read_buffer().take_remaining().iter().copied());
+
+        match result {
+            BufferResult::BufferUnderflow => break,
+            BufferResult::BufferOverflow => {}
+        }
+    }
+
+    String::from_utf8(decrypted_data).unwrap()
 }

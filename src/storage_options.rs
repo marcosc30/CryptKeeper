@@ -1,12 +1,34 @@
 use std::fs::OpenOptions;
 use std::io::{Error, Write};
-
 use crate::encryption_algorithms::encrypt_password;
 use crate::encryption_algorithms::decrypt_password;
 
+// Do initital constant value checking
+// This is not extremelty important, since if the value is correct even with the wrong password, the passwords will be gibberish
+pub fn add_constant_value(hashed_master: &str) -> Result<(), Error> {
+    // Done during initialization for a new storage option file for users
+    // Also, if I want to support multiple users on one program, you just have a constant encrypted value associated to each
+    // Account, and only unlock the ones that are associated with the corresponding password
+    let constant_val = "constant_value";
+    let [encrypted_constant_val, constant_val_iv] = encrypt_password(constant_val, hashed_master);
+    // Now we store it in passwords.txt
+    let path_str = "storage/passwords.txt";
+    let path = Path::new(path_str);
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(path)?;
+
+    file.write_all(String::from("\n Constant Value: "))?;
+    file.write_all(encrypted_constant_val)?;
+    file.write_all(String::from("\n Constant Value IV: "))?;
+    file.write_all(constant_val_iv)?;
+}
+
 // Add a password/Account pair
 
-fn add_password(account: &str, password: &str, hashed_master: &str, website: &str) -> Result<(), Error> {
+pub fn add_password(account: &str, password: &str, hashed_master: &str, website: &str) -> Result<(), Error> {
     // master password can be stored within the main function as soon as you enter it, without ever being stored on the disk
 
     // as long as external and debugging tools are off, you cannot access this memory
