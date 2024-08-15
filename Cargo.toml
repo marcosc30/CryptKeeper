@@ -13,4 +13,3 @@ egui = "0.28.1"
 eframe = "0.28.1"
 winapi = { version = "0.3", features = ["winuser"] }
 clipboard = "0.5"
-haveibeenpwned = "1.0.0"
