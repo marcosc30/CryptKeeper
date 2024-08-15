@@ -1,6 +1,4 @@
 In Rust
-1. Build encryption tools
-2. Build storage storage_options (add a change account info option and maybe an indexing system so it's easier to find things given the account name)
-3. Test both to make sure they're working well
-4. Set up the main function so that the master password is inserted, and there is a loop for user input (have it work in terminal)
-5. Start working on front end
+- Add rigorous testing for all of these functions
+- Add salts to password hashing
+- 

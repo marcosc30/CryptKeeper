@@ -11,18 +11,20 @@ use rand::Rng;
 use std::str;
 use crypto::aes::cbc_decryptor;
 
-pub fn hash_master(password: &str) -> u8 {
+pub fn hash_master(password: &str) -> [u8; 32] {
     // If I was making this on the cloud, or to make an improvement, I'd add a salt to the password
     let converted_password = password.as_bytes();
     let mut hasher = Sha256::new();
     hasher.update(converted_password);
     let result = hasher.finalize();
-    result[0]
+    let mut hashed_password = [0; 32];
+    hashed_password.copy_from_slice(&result[..]);
+    hashed_password
 }
 
 // 2. Encrypt a given password using the master password
 
-pub fn encrypt_password(password: &str, key: &[u8]) -> Vec<u8> {
+pub fn encrypt_password(password: &str, key: &[u8; 32]) -> Vec<u8> {
     // Generate a random IV
     let iv: [u8; 16] = rand::thread_rng().gen();
 
