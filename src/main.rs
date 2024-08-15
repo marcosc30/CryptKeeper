@@ -1,8 +1,14 @@
+use egui::Stroke;
 use rusqlite::Connection;
 mod storage_options_SQL;
 mod encryption_algorithms;
 use eframe::egui;
+use std::fs;
 use clipboard::{ClipboardContext, ClipboardProvider};
+use egui::FontFamily::Proportional;
+use egui::FontId;
+use egui::TextStyle::*;
+
 
 enum Screen {
     Login,
@@ -41,7 +47,7 @@ impl PasswordManagerApp {
         ui.label("Please enter a Username");
         ui.text_edit_singleline(&mut self.account);
 
-        if ui.button("Submit").clicked() {
+        if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             self.user_id = storage_options_SQL::get_user_id(&self.account)
                 .expect("Failed to get user id");
             if self.user_id == 0 {
@@ -69,7 +75,7 @@ impl PasswordManagerApp {
 
         // Add password confirmation here
 
-        if ui.button("Submit").clicked() {
+        if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             self.text_buffer.clear();
             let hashed_master = encryption_algorithms::hash_master(&master_password);
             self.hashed_master = hashed_master;
@@ -81,7 +87,7 @@ impl PasswordManagerApp {
         ui.label("Please enter the master password: ");
         ui.text_edit_singleline(&mut self.text_buffer);
 
-        if ui.button("Submit").clicked() {
+        if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let master_password = self.text_buffer.clone();
             self.text_buffer.clear();
             let hashed_master = encryption_algorithms::hash_master(&master_password);
@@ -142,14 +148,13 @@ impl PasswordManagerApp {
         ui.label("Please enter the account name: ");
         ui.text_edit_singleline(&mut self.current_account);
 
-
         ui.label("Please enter the website: ");
         ui.text_edit_singleline(&mut self.current_website);
 
         ui.label("Please enter the password: ");
         ui.text_edit_singleline(&mut self.current_password);
 
-        if ui.button("Submit").clicked() {
+        if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             storage_options_SQL::add_password(self.user_id, &self.current_account, &self.current_password, &self.hashed_master, &self.current_website)
                 .expect("Failed to add password");
             self.current_account.clear();
@@ -179,6 +184,39 @@ impl PasswordManagerApp {
 impl eframe::App for PasswordManagerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
+            let mut style = (*ctx.style()).clone();
+            style.text_styles = [
+            (Heading, FontId::new(30.0, Proportional)),
+            (Name("Heading2".into()), FontId::new(25.0, Proportional)),
+            (Name("Context".into()), FontId::new(23.0, Proportional)),
+            (Body, FontId::new(18.0, Proportional)),
+            (Monospace, FontId::new(14.0, Proportional)),
+            (Button, FontId::new(14.0, Proportional)),
+            (Small, FontId::new(10.0, Proportional)),
+            ].into();
+
+            style.visuals.override_text_color = Some(egui::Color32::from_rgb(255, 255, 255));
+            style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(0, 0, 0);
+            style.visuals.extreme_bg_color = egui::Color32::from_rgb(13, 6, 48);
+            style.visuals.panel_fill = egui::Color32::from_rgb(24, 49, 79);
+            style.visuals.warn_fg_color = egui::Color32::from_rgb(211, 101, 130);
+            style.visuals.error_fg_color = egui::Color32::from_rgb(255, 0, 0);
+            style.visuals.faint_bg_color = egui::Color32::from_rgb(31, 56, 86);
+            style.visuals.hyperlink_color = egui::Color32::from_rgb(136, 162, 170);
+
+            style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(31, 56, 86);
+            style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(31, 56, 86);
+            style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(31, 56, 86);
+            style.visuals.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(31, 56, 86);
+            style.visuals.widgets.open.bg_fill = egui::Color32::from_rgb(31, 56, 86);
+            style.visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, egui::Color32::from_rgb(31, 56, 86));
+            style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(13, 6, 48);
+            style.visuals.widgets.inactive.expansion = 0.3;
+
+
+
+            ctx.set_style(style);
+
             match self.current_screen {
                 Screen::Login => self.login_screen(ui),
                 Screen::InsertMaster => self.insert_master_screen(ui),
@@ -202,6 +240,9 @@ impl eframe::App for PasswordManagerApp {
 }
 
 fn main() {
+    std::fs::create_dir_all("storage").expect("Failed to create storage directory");
+    init_SQL_storage();
+    init_user_id_table();
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Password Manager App",
