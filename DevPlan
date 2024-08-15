@@ -1,4 +1,5 @@
 In Rust
 - Add rigorous testing for all of these functions
 - Add salts to password hashing
-- 
+- Add change password/account details
+- Same for change master password, which could possibly be done by reusing the enter_new_master by adding a flag to see if it is a new user/if a user has passwords stored that need rencrypting

@@ -1,10 +1,216 @@
-use core::hash;
-
 use rusqlite::Connection;
 mod storage_options_SQL;
 mod encryption_algorithms;
+use eframe::egui;
+use clipboard::{ClipboardContext, ClipboardProvider};
+
+enum Screen {
+    Login,
+    UserNotFound,
+    EnterNewMaster,
+    InsertMaster,
+    Main,
+    AddPassword,
+    GetPassword
+}
+struct PasswordManagerApp{
+    current_screen: Screen,
+    user_id: i32,
+    account: String,
+    hashed_master: [u8; 32],
+    text_buffer: String,
+    current_account: String,
+    current_website: String,
+    current_password: String
+}
+
+impl PasswordManagerApp {
+    fn new() -> Self {
+        Self {
+            user_id: 0,
+            account: String::new(),
+            current_screen: Screen::Login,
+            hashed_master: [0; 32],
+            text_buffer: String::new(),
+            current_account: String::new(),
+            current_website: String::new(),
+            current_password: String::new()
+        }
+    }
+    fn login_screen(&mut self, ui: &mut egui::Ui) {
+        ui.label("Please enter a Username");
+        ui.text_edit_singleline(&mut self.account);
+
+        if ui.button("Submit").clicked() {
+            self.user_id = storage_options_SQL::get_user_id(&self.account)
+                .expect("Failed to get user id");
+            if self.user_id == 0 {
+                self.current_screen = Screen::UserNotFound;
+            } else {
+                self.current_screen = Screen::InsertMaster;
+            }
+        };
+    }
+    fn user_not_found_screen(&mut self, ui: &mut egui::Ui) {
+        ui.label("User not found, would you like to create a new user?");
+        if ui.button("Yes").clicked() {
+           self.current_screen = Screen::EnterNewMaster;      
+        }
+        if ui.button("No").clicked() {
+            println!("User not found");
+            self.current_screen = Screen::Login;
+            return;
+        }
+    } 
+    fn enter_new_master_screen(&mut self, ui: &mut egui::Ui) {
+        ui.label("Please enter the new master password: ");
+        ui.text_edit_singleline(&mut self.text_buffer);
+        let master_password = self.text_buffer.clone();
+
+        // Add password confirmation here
+
+        if ui.button("Submit").clicked() {
+            self.text_buffer.clear();
+            let hashed_master = encryption_algorithms::hash_master(&master_password);
+            self.hashed_master = hashed_master;
+            self.user_id = storage_options_SQL::add_user_id(self.account.as_str(), &hashed_master).expect("Failed to add user_id");
+            self.current_screen = Screen::Login;
+        }              
+    }
+    fn insert_master_screen(&mut self, ui: &mut egui::Ui) {
+        ui.label("Please enter the master password: ");
+        ui.text_edit_singleline(&mut self.text_buffer);
+
+        if ui.button("Submit").clicked() {
+            let master_password = self.text_buffer.clone();
+            self.text_buffer.clear();
+            let hashed_master = encryption_algorithms::hash_master(&master_password);
+            self.hashed_master = hashed_master;
+            let hashed_master_vec = hashed_master.to_vec();
+            let hashed_user_master = storage_options_SQL::get_hashed_master(self.user_id);
+
+            if hashed_master_vec != hashed_user_master {
+                self.hashed_master = [0; 32];
+                println!("Incorrect master password");
+                return;
+            }
+            self.current_screen = Screen::Main;
+        }
+    }
+    fn main_screen(&mut self, ui: &mut egui::Ui) {
+        // This main screen will be different to the terminal version, it will have buttons for each of the commands
+        // It will have an add a password button at the top
+        // Then a list of all the accounts associated with the user_id, with buttons next to each one to get the password or delete the password
+        // Then a button to exit
+
+        if ui.button("Add a password").clicked() {
+            self.current_screen = Screen::AddPassword;
+        }
+        if ui.button("Exit").clicked() {
+            self.hashed_master = [0; 32];
+            self.user_id = 0;
+            self.account.clear();
+            self.current_screen = Screen::Login;
+        }
+
+        // if ui.button("Check for compromised passwords").clicked() {
+        //     // This will check all the passwords associated with the user_id and see if they have been compromised
+        //     // It will then display a list of all the compromised passwords
+        // }
+
+        let account_list = storage_options_SQL::get_accounts(&self.hashed_master, self.user_id);
+
+        for (i, account) in account_list[0].iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(account);
+                if ui.button("Get Password").clicked() {
+                    self.current_account =  account_list[0][i].clone();
+                    self.current_website = account_list[1][i].clone();
+                    self.current_password = account_list[2][i].clone();
+                    self.current_screen = Screen::GetPassword;
+                }
+                if ui.button("Delete Password").clicked() {
+                    let entry_id = storage_options_SQL::find_entry_id(self.user_id, account.as_str(), account_list[1][i].as_str(), &self.hashed_master);
+                    storage_options_SQL::remove_password(entry_id)
+                        .expect("Failed to delete password");
+                }
+            });
+        }
+
+    }
+    fn add_password_screen(&mut self, ui: &mut egui::Ui) {
+        ui.label("Please enter the account name: ");
+        ui.text_edit_singleline(&mut self.current_account);
+
+
+        ui.label("Please enter the website: ");
+        ui.text_edit_singleline(&mut self.current_website);
+
+        ui.label("Please enter the password: ");
+        ui.text_edit_singleline(&mut self.current_password);
+
+        if ui.button("Submit").clicked() {
+            storage_options_SQL::add_password(self.user_id, &self.current_account, &self.current_password, &self.hashed_master, &self.current_website)
+                .expect("Failed to add password");
+            self.current_account.clear();
+            self.current_website.clear();
+            self.current_password.clear();
+            self.current_screen = Screen::Main;
+        }
+    }
+    fn get_password_screen(&mut self, ui: &mut egui::Ui) {
+        ui.label(format!("The password for {} on {} is: {}", self.current_account, self.current_website, self.current_password));
+        if ui.button("Copy to clipboard").clicked() {
+            let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+            ctx.set_contents(self.current_password.clone()).expect("Failed to copy to clipboard");
+        }
+        // if ui.button("Check if password has been compromised").clicked() {
+            
+        // }
+        if ui.button("Back").clicked() {
+            self.current_account.clear();
+            self.current_website.clear();
+            self.current_password.clear();
+            self.current_screen = Screen::Main;
+        }
+    }
+}
+
+impl eframe::App for PasswordManagerApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            match self.current_screen {
+                Screen::Login => self.login_screen(ui),
+                Screen::InsertMaster => self.insert_master_screen(ui),
+                Screen::Main => self.main_screen(ui),
+                Screen::UserNotFound => self.user_not_found_screen(ui),
+                Screen::EnterNewMaster => self.enter_new_master_screen(ui),
+                Screen::AddPassword => self.add_password_screen(ui),
+                Screen::GetPassword => self.get_password_screen(ui),
+                _ => {}
+            }
+        });
+    }
+    fn on_exit(&mut self, _ctx: Option<&eframe::glow::Context>) {
+        self.hashed_master = [0; 32];
+        self.user_id = 0;
+        self.account.clear();
+        self.current_account.clear();
+        self.current_website.clear();
+        self.current_password.clear();
+    }
+}
 
 fn main() {
+    let options = eframe::NativeOptions::default();
+    eframe::run_native(
+        "Password Manager App",
+        options,
+        Box::new(|_cc| Ok(Box::new(PasswordManagerApp::new()))),
+    );
+}
+
+fn main_orig() {
     init_SQL_storage();
     init_user_id_table();
 

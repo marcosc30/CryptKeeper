@@ -36,23 +36,6 @@ pub fn get_user_id(user_account: &str) -> Result<i32, Error> {
         user_id = row.get(0).unwrap();
     }
 
-    if user_id == 0 {
-        println!("User not found, would you like to add them? (y/n)");
-        let mut response = String::new();
-        std::io::stdin().read_line(&mut response).expect("Failed to read line");
-        let response = response.trim().to_string();
-        if response == "y" {
-            println!("Please enter the master password: ");
-            let mut master_password = String::new();
-            std::io::stdin().read_line(&mut master_password).expect("Failed to read line");
-            let master_password = master_password.trim().to_string();
-            let hashed_master = encryption_algorithms::hash_master(&master_password);
-            user_id = add_user_id(user_account, &hashed_master).expect("Failed to add user_id");
-        } else {
-            return Err(Error::new(ErrorKind::Other, "User not found"));
-        }
-    }
-
     Ok(user_id)
 }
 
