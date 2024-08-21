@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use egui::Color32;
+use egui::RichText;
 use egui::Stroke;
 use rusqlite::Connection;
 mod storage_options_sql;
@@ -34,7 +36,8 @@ struct PasswordManagerApp{
     current_website: String,
     current_password: String,
     password_attempts: i32,
-    password_limit: bool
+    password_limit: bool,
+    master_safe: (u32, Vec<String>)
 }
 
 impl PasswordManagerApp {
@@ -52,7 +55,8 @@ impl PasswordManagerApp {
             current_website: String::new(),
             current_password: String::new(),
             password_attempts: 0,
-            password_limit: false
+            password_limit: false,
+            master_safe: (0, Vec::new())
         }
     }
     /// This function will display the login screen, where the user will enter their username
@@ -106,6 +110,11 @@ impl PasswordManagerApp {
     /// This function will display the change master password screen, where the user will enter their new master password
     /// and with it, the master password will be changed
     fn change_master_screen(&mut self, ui: &mut egui::Ui) {
+        ui.label("Your current master password has the following vulnerabilities: ");
+        for message in self.master_safe.1.iter() {
+            ui.label(RichText::new(message).color(Color32::RED).size(12.5));
+        }
+
         ui.label("Please enter the new master password: ");
         ui.text_edit_singleline(&mut self.text_buffer);
         let master_password = self.text_buffer.clone();
@@ -128,6 +137,10 @@ impl PasswordManagerApp {
             self.text_buffer.clear();
             self.current_screen = Screen::Login;
         }      
+
+        if ui.button("Cancel").clicked() {
+            self.current_screen = Screen::Main;
+        }
     }       
     
     /// This function will display the insert master screen, where the user will enter their master password
@@ -180,6 +193,7 @@ impl PasswordManagerApp {
                 println!("Incorrect master password");
                 return;
             } else {
+                self.master_safe = password_generator::check_password_safety(&master_password);
                 self.password_attempts = 0;
                 self.display_incorrect_msg = false;
                 self.current_screen = Screen::Main;
@@ -197,6 +211,11 @@ impl PasswordManagerApp {
         if ui.button("Add a password").clicked() {
             self.current_screen = Screen::AddPassword;
         }
+
+        if self.master_safe.0 < 30 {
+            ui.label(RichText::new("Your master password is not safe, please change it").color(Color32::RED).size(12.5));
+        }
+
         if ui.button("Change Master Password").clicked() {
             self.current_screen = Screen::ChangeMasterPassword;
         }
@@ -257,6 +276,14 @@ impl PasswordManagerApp {
     }
     fn get_password_screen(&mut self, ui: &mut egui::Ui) {
         ui.label(format!("The password for {} on {} is: {}", self.current_account, self.current_website, self.current_password));
+
+        // Display password safety
+        let (safety_rating, safety_message) = password_generator::check_password_safety(&self.current_password);
+        ui.label(format!("Password safety rating: {}/50", safety_rating));
+        for message in safety_message {
+            ui.label(RichText::new(message).color(Color32::RED).size(12.5));
+        }
+        
         if ui.button("Copy to clipboard").clicked() {
             let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
             ctx.set_contents(self.current_password.clone()).expect("Failed to copy to clipboard");

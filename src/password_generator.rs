@@ -1,5 +1,4 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use Option;
 use std::fs::File;
 
 pub fn generate_password(length: u32) -> String {
@@ -31,9 +30,10 @@ pub fn check_password_safety(password: &str) -> (u32, Vec<String>) {
     // Check if the password is on a common password list from the storage/100k-most-used-passwords.txt file
     use std::io::{BufRead, BufReader};
     
-    let common_passwords = BufReader::new(File::open("storage/100k-most-used-passwords.txt").expect("Failed to open common passwords file"));
+    let common_passwords = BufReader::new(File::open("storage/100k-most-used-passwords-NCSC.txt").expect("Failed to open common passwords file"));
     if common_passwords.lines().any(|line| line.unwrap() == password) {
         safety_message.push("This password is on a common password list".to_string());
+        return (0, safety_message);
     } else {
         safety_rating += 15;
     }
