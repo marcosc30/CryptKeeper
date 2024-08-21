@@ -1,12 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod storage_options_sql;
+mod encryption_algorithms;
+mod password_generator;
 
 use egui::Color32;
 use egui::RichText;
 use egui::Stroke;
 use rusqlite::Connection;
-mod storage_options_sql;
-mod encryption_algorithms;
-mod password_generator;
 use eframe::egui;
 use clipboard::{ClipboardContext, ClipboardProvider};
 use egui::FontFamily::Proportional;
