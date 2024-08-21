@@ -23,6 +23,7 @@ enum Screen {
 }
 struct PasswordManagerApp{
     current_screen: Screen,
+    display_incorrect_msg: bool,
     user_id: i32,
     account: String,
     salt: [u8; 32],
@@ -36,10 +37,11 @@ struct PasswordManagerApp{
 impl PasswordManagerApp {
     fn new() -> Self {
         Self {
+            current_screen: Screen::Login,
+            display_incorrect_msg: false,
             user_id: 0,
             account: String::new(),
             salt: [0; 32],
-            current_screen: Screen::Login,
             hashed_master: [0; 32],
             text_buffer: String::new(),
             current_account: String::new(),
@@ -93,13 +95,19 @@ impl PasswordManagerApp {
         ui.label("Please enter the master password: ");
         ui.text_edit_singleline(&mut self.text_buffer);
 
+        if self.display_incorrect_msg {
+            ui.label("Incorrect master password, please try again");
+        }
+
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let master_password = self.text_buffer.clone();
-            self.text_buffer.clear();
+
             let salt = storage_options_sql::get_salt(self.user_id); 
             for i in 0..32 {
                 self.salt[i] = salt[i];
             }
+
+            self.text_buffer.clear();
             let hashed_master = encryption_algorithms::hash_master(&master_password, self.salt);
             self.hashed_master = hashed_master;
             let hashed_master_vec = hashed_master.to_vec();
@@ -107,6 +115,7 @@ impl PasswordManagerApp {
 
             if hashed_master_vec != hashed_user_master {
                 self.hashed_master = [0; 32];
+                self.display_incorrect_msg = true;
                 println!("Incorrect master password");
                 return;
             }
@@ -123,35 +132,35 @@ impl PasswordManagerApp {
             self.current_screen = Screen::AddPassword;
         }
         if ui.button("Exit").clicked() {
-            self.current_screen = Screen::Login;
             self.hashed_master = [0; 32];
             self.user_id = 0;
             self.account.clear();
             self.salt = [0; 32];
-        }
+            self.current_screen = Screen::Login;
+        } else {
+            // if ui.button("Check for compromised passwords").clicked() {
+            //     // This will check all the passwords associated with the user_id and see if they have been compromised
+            //     // It will then display a list of all the compromised passwords
+            // }
 
-        // if ui.button("Check for compromised passwords").clicked() {
-        //     // This will check all the passwords associated with the user_id and see if they have been compromised
-        //     // It will then display a list of all the compromised passwords
-        // }
+            let account_list = storage_options_sql::get_accounts(&self.hashed_master, self.user_id);
 
-        let account_list = storage_options_sql::get_accounts(&self.hashed_master, self.user_id);
-
-        for (i, account) in account_list[0].iter().enumerate() {
-            ui.horizontal(|ui| {
-                ui.label(account);
-                if ui.button("Get Password").clicked() {
-                    self.current_account =  account_list[0][i].clone();
-                    self.current_website = account_list[1][i].clone();
-                    self.current_password = account_list[2][i].clone();
-                    self.current_screen = Screen::GetPassword;
-                }
-                if ui.button("Delete Password").clicked() {
-                    let entry_id = storage_options_sql::find_entry_id(self.user_id, account.as_str(), account_list[1][i].as_str(), &self.hashed_master);
-                    storage_options_sql::remove_password(entry_id)
-                        .expect("Failed to delete password");
-                }
-            });
+            for (i, account) in account_list[0].iter().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label(account);
+                    if ui.button("Get Password").clicked() {
+                        self.current_account =  account_list[0][i].clone();
+                        self.current_website = account_list[1][i].clone();
+                        self.current_password = account_list[2][i].clone();
+                        self.current_screen = Screen::GetPassword;
+                    }
+                    if ui.button("Delete Password").clicked() {
+                        let entry_id = storage_options_sql::find_entry_id(self.user_id, account.as_str(), account_list[1][i].as_str(), &self.hashed_master);
+                        storage_options_sql::remove_password(entry_id)
+                            .expect("Failed to delete password");
+                    }
+                });
+            }
         }
 
     }
@@ -165,7 +174,7 @@ impl PasswordManagerApp {
         ui.label("Please enter the password: ");
         ui.text_edit_singleline(&mut self.current_password);
         if ui.button("Generate password").clicked() {
-            self.current_password = password_generator::generate_password(16);
+            self.current_password = password_generator::generate_password(20);
         }
 
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -243,6 +252,7 @@ impl eframe::App for PasswordManagerApp {
         });
     }
     fn on_exit(&mut self, _ctx: Option<&eframe::glow::Context>) {
+        println!("Exiting");
         self.hashed_master = [0; 32];
         self.user_id = 0;
         self.account.clear();
@@ -250,6 +260,7 @@ impl eframe::App for PasswordManagerApp {
         self.current_website.clear();
         self.current_password.clear();
     }
+
 }
 
 fn main() {
