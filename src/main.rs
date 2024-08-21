@@ -389,7 +389,7 @@ fn main() {
 /// This function initializes the user_id table in the SQL database
 fn init_user_id_table() {
     // This is the initialization of the storage database with the encrypted passwords in SQL using SQLx
-    let conn = rusqlite::Connection::open("storage/users.db").unwrap();
+    let conn = rusqlite::Connection::open("storage/passwords.db").unwrap();
     conn.execute(
         "CREATE TABLE IF NOT EXISTS user_id (
             user_id INTEGER PRIMARY KEY,

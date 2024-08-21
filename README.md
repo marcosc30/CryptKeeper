@@ -12,9 +12,8 @@ I'm still working on pushing the project further, my main ideas to expand are to
 - Search functionality to quickly find accounts
 
 ## Installation:
-1. Clone the repository: `git clone https://github.com/your-username/password-manager.git`
-2. Install the required dependencies: `npm install`
-3. Start the application: `npm start`
+- If you just want to run it, click on the Download folder in the repository and download just that from github
+- If you want to make modifications or look through the code, clone the repository as you would normally
 
 ## Usage:
 1. Launch the Password Manager application.
@@ -27,8 +26,3 @@ Until cloud support is directly integrated, I recommend backing up passwords.
 
 Keep that master password safe!! No matter who encrypted everything is, if you have the password, it's wraps. I may add MFA to it in the future to prevent harmful attacks, but since this is not available on the web, an attacker must have both the password and access to the device or the database files, which is a similar level of penetration to being able to beat MFA anyway.
 
-## Contributing:
-Contributions are welcome!
-
-## License:
-This project is licensed under the MIT License. See the LICENSE.md file for more details.
