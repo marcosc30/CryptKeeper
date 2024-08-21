@@ -127,7 +127,7 @@ impl PasswordManagerApp {
         if (ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter))) && self.text_buffer == master_password {
             self.current_password.clear();
 
-            // generate a new random salt
+            // Generate a new random salt
             let salt = rand::thread_rng().gen::<[u8; 32]>();
             let hashed_master = encryption_algorithms::hash_master(&master_password, salt);
 
@@ -201,7 +201,7 @@ impl PasswordManagerApp {
         }
     }
     /// This function will display the main screen, where the user can add a password, check for compromised passwords,
-    /// get any password, delete any password, exit the application
+    /// get any password, change any password, delete any password, exit the application
     /// The check for compromised passwords is not implemented yet
     fn main_screen(&mut self, ui: &mut egui::Ui) {
         self.current_account.clear();
@@ -242,8 +242,16 @@ impl PasswordManagerApp {
                         self.current_password = account_list[2][i].clone();
                         self.current_screen = Screen::GetPassword;
                     }
+                    if ui.button("Change Password").clicked() {
+                        self.current_account =  account_list[0][i].clone();
+                        self.current_website = account_list[1][i].clone();
+                        self.current_password = account_list[2][i].clone();
+                        storage_options_sql::remove_password(storage_options_sql::find_entry_id(self.user_id, account.as_str(), account_list[2][i].as_str(), account_list[1][i].as_str(), &self.hashed_master))
+                            .expect("Failed to delete password");
+                        self.current_screen = Screen::AddPassword;
+                    }
                     if ui.button("Delete Password").clicked() {
-                        let entry_id = storage_options_sql::find_entry_id(self.user_id, account.as_str(), account_list[1][i].as_str(), &self.hashed_master);
+                        let entry_id = storage_options_sql::find_entry_id(self.user_id, account.as_str(), account_list[2][i].as_str(), account_list[1][i].as_str(), &self.hashed_master);
                         storage_options_sql::remove_password(entry_id)
                             .expect("Failed to delete password");
                     }
@@ -252,6 +260,8 @@ impl PasswordManagerApp {
         }
 
     }
+
+    /// This function will display the add password screen, where the user will enter the account name, website, and password
     fn add_password_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("Please enter the account name: ");
         ui.text_edit_singleline(&mut self.current_account);
@@ -274,6 +284,7 @@ impl PasswordManagerApp {
             self.current_screen = Screen::Main;
         }
     }
+    /// This function will display the get password screen, where the user will be shown the password for the account and website
     fn get_password_screen(&mut self, ui: &mut egui::Ui) {
         ui.label(format!("The password for {} on {} is: {}", self.current_account, self.current_website, self.current_password));
 
@@ -300,6 +311,7 @@ impl PasswordManagerApp {
     }
 }
 
+/// This is the implementation of the App trait for the PasswordManagerApp struct
 impl eframe::App for PasswordManagerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -348,6 +360,7 @@ impl eframe::App for PasswordManagerApp {
             }
         });
     }
+    /// This function will be called when the application is exited, to clear all sensitive data from memory
     fn on_exit(&mut self, _ctx: Option<&eframe::glow::Context>) {
         println!("Exiting");
         self.hashed_master = [0; 32];
@@ -360,6 +373,7 @@ impl eframe::App for PasswordManagerApp {
 
 }
 
+// This is the main function that will run the application by running native egui
 fn main() {
     std::fs::create_dir_all("storage").expect("Failed to create storage directory");
     init_sql_storage();
@@ -372,6 +386,7 @@ fn main() {
     ).expect("Failed to run native");
 }
 
+/// This function initializes the user_id table in the SQL database
 fn init_user_id_table() {
     // This is the initialization of the storage database with the encrypted passwords in SQL using SQLx
     let conn = rusqlite::Connection::open("storage/users.db").unwrap();
@@ -399,6 +414,7 @@ fn init_user_id_table() {
     }
 }
 
+/// This function initializes the password table in the SQL database
 fn init_sql_storage() {
     // This is the initialization of the storage database with the encrypted passwords in SQL using SQLx
     let conn = Connection::open("storage/passwords.db").unwrap();

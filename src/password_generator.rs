@@ -1,13 +1,16 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::fs::File;
 
+/// This function generates a password of a given length
 pub fn generate_password(length: u32) -> String {
+    // Define a character pool
     let character_pool = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
     let character_pool_len = character_pool.len();
 
+    // Generate a random seed using StdRng for extra security
     let mut rng = StdRng::from_entropy();
-    // It will be organized in blocks of 4 to be easier to remember with a dash between each block
 
+    // Generate the password
     let mut password = String::new();
     for i in 0..length {
         if i % 4 == 0 && i != 0 {
@@ -21,7 +24,7 @@ pub fn generate_password(length: u32) -> String {
     password
 }
 
-/// this function will provide a safety rating from 0 to 50 based on several factors like length, character diversity, 
+/// This function will provide a safety rating from 0 to 50 based on several factors like length, character diversity, 
 /// whether it is on a common password list, etc.
 pub fn check_password_safety(password: &str) -> (u32, Vec<String>) {
     let mut safety_rating = 0;
