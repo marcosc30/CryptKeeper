@@ -11,11 +11,12 @@ use rand::Rng;
 use std::str;
 use crypto::aes::cbc_decryptor;
 
-pub fn hash_master(password: &str) -> [u8; 32] {
+pub fn hash_master(password: &str, salt: [u8; 32]) -> [u8; 32] {
     // If I was making this on the cloud, or to make an improvement, I'd add a salt to the password
     let converted_password = password.as_bytes();
     let mut hasher = Sha256::new();
     hasher.update(converted_password);
+    hasher.update(&salt);
     let result = hasher.finalize();
     let mut hashed_password = [0; 32];
     hashed_password.copy_from_slice(&result[..]);

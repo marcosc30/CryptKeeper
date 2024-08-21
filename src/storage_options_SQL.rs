@@ -1,11 +1,11 @@
-use crate::encryption_algorithms;
 use crate::encryption_algorithms::encrypt_password;
 use crate::encryption_algorithms::decrypt_password;
 use std::io::{Error, ErrorKind};
 use std::str;
 use rusqlite;
+use rand::Rng;
 
-pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32]) -> Result<i32, Error> {
+pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32], salt: &[u8; 32]) -> Result<i32, Error> {
     // Returns the new user_id of the user account
     let conn = rusqlite::Connection::open("storage/users.db").expect("Failed to open database");
     // First, we find the largest user_id, then we add 1 to it
@@ -19,8 +19,8 @@ pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32]) -> Result<i32, 
     // Add a check to make sure a user account with that name doesn't exist yet
 
     conn.execute(
-        "INSERT INTO user_id (account, user_id, hashed_master_password) VALUES (?, ?, ?)",
-        rusqlite::params![user_account, user_id, hashed_master_vector]
+        "INSERT INTO user_id (account, user_id, hashed_master_password, salt) VALUES (?, ?, ?, ?)",
+        rusqlite::params![user_account, user_id, hashed_master_vector, salt]
     ).expect("Failed to add user_id");
 
     Ok(user_id)
@@ -37,6 +37,19 @@ pub fn get_user_id(user_account: &str) -> Result<i32, Error> {
     }
 
     Ok(user_id)
+}
+
+pub fn get_salt(user_id: i32) -> Vec<u8> {
+    let conn = rusqlite::Connection::open("storage/users.db").expect("Failed to open database");
+    let mut salt = Vec::new();
+    let mut statement = conn.prepare("SELECT salt FROM user_id WHERE user_id = ?").expect("Failed to prepare statement");
+    let mut rows = statement.query(&[&user_id]).unwrap();
+
+    while let Some(row) = rows.next().unwrap() {
+        salt = row.get(0).unwrap();
+    }
+
+    salt
 }
 
 pub fn get_hashed_master(user_id: i32) -> Vec<u8> {

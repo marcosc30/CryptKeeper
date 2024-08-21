@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use egui::Stroke;
 use rusqlite::Connection;
 mod storage_options_SQL;
@@ -8,6 +10,7 @@ use clipboard::{ClipboardContext, ClipboardProvider};
 use egui::FontFamily::Proportional;
 use egui::FontId;
 use egui::TextStyle::*;
+use rand::Rng;
 
 
 enum Screen {
@@ -23,6 +26,7 @@ struct PasswordManagerApp{
     current_screen: Screen,
     user_id: i32,
     account: String,
+    salt: [u8; 32],
     hashed_master: [u8; 32],
     text_buffer: String,
     current_account: String,
@@ -35,6 +39,7 @@ impl PasswordManagerApp {
         Self {
             user_id: 0,
             account: String::new(),
+            salt: [0; 32],
             current_screen: Screen::Login,
             hashed_master: [0; 32],
             text_buffer: String::new(),
@@ -77,9 +82,11 @@ impl PasswordManagerApp {
 
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             self.text_buffer.clear();
-            let hashed_master = encryption_algorithms::hash_master(&master_password);
+            // generate a random salt
+            let salt = rand::thread_rng().gen::<[u8; 32]>();
+            let hashed_master = encryption_algorithms::hash_master(&master_password, salt);
             self.hashed_master = hashed_master;
-            self.user_id = storage_options_SQL::add_user_id(self.account.as_str(), &hashed_master).expect("Failed to add user_id");
+            self.user_id = storage_options_SQL::add_user_id(self.account.as_str(), &hashed_master, &salt).expect("Failed to add user_id");
             self.current_screen = Screen::Login;
         }              
     }
@@ -90,7 +97,11 @@ impl PasswordManagerApp {
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let master_password = self.text_buffer.clone();
             self.text_buffer.clear();
-            let hashed_master = encryption_algorithms::hash_master(&master_password);
+            let salt = storage_options_SQL::get_salt(self.user_id); 
+            for i in 0..32 {
+                self.salt[i] = salt[i];
+            }
+            let hashed_master = encryption_algorithms::hash_master(&master_password, self.salt);
             self.hashed_master = hashed_master;
             let hashed_master_vec = hashed_master.to_vec();
             let hashed_user_master = storage_options_SQL::get_hashed_master(self.user_id);
@@ -251,126 +262,6 @@ fn main() {
     );
 }
 
-fn main_orig() {
-    init_SQL_storage();
-    init_user_id_table();
-
-    let mut user_id = 0;
-    
-    // Maybe add a bool to the password storage to have extra secure that asks for master password again before getting it
-
-    loop {
-        println!("Please enter a Username");
-        let mut user_account = String::new();
-        std::io::stdin().read_line(&mut user_account).expect("Failed to read line");
-        user_account = user_account.trim().to_string();
-
-        user_id = storage_options_SQL::get_user_id(&user_account)
-            .expect("Failed to get user id");
-        // Implement better error checking here so if the wrong user id is input, the program can just prompt you for the Username again
-        break;
-    }
-    
-    println!("Please enter the master password: ");
-    let mut master_password = String::new();
-    std::io::stdin().read_line(&mut master_password).expect("Failed to read line");
-    master_password = master_password.trim().to_string();
-    let hashed_master = encryption_algorithms::hash_master(&master_password);
-    let hashed_master_vec = hashed_master.to_vec();
-
-    let hashed_user_master = storage_options_SQL::get_hashed_master(user_id);
-
-    if hashed_master_vec != hashed_user_master {
-        println!("Incorrect master password");
-        return;
-    }
-
-    loop {
-        println!("Please enter a command: ");
-        println!("1. Add a password");
-        println!("2. Get a password");
-        println!("3. Delete a password");
-        println!("4. Exit");
-        let mut command = String::new();
-        std::io::stdin().read_line(&mut command).expect("Failed to read line");
-        command = command.trim().to_string();
-
-        match command.as_str() {
-            "1" => {
-                println!("Please enter the account name: ");
-                let mut account = String::new();
-                std::io::stdin().read_line(&mut account).expect("Failed to read line");
-                account = account.trim().to_string();
-
-                println!("Please enter the website: ");
-                let mut website = String::new();
-                std::io::stdin().read_line(&mut website).expect("Failed to read line");
-                website = website.trim().to_string();
-
-                println!("Please enter the password: ");
-                let mut password = String::new();
-                std::io::stdin().read_line(&mut password).expect("Failed to read line");
-                password = password.trim().to_string();
-
-                storage_options_SQL::add_password(user_id, &account, &password, &hashed_master, &website)
-                    .expect("Failed to add password");
-
-                // Add a check so you can't add two identical accounts (with same account name and website, password doesn't matter)
-            }
-            "2" => {
-                // This will first show all account names associated with the user_id then ask for the account name (by numbering them
-                // and allowing the user to simply input which number on the list it is)
-                let account_list = storage_options_SQL::get_accounts(&hashed_master, user_id);
-                
-                println!("Enter 0 to cancel");
-
-                for (i, account) in account_list[0].iter().enumerate() {
-                    println!("{}. {}, {}", i + 1, account, account_list[1][i]);
-                }
-
-                println!("Please enter the number of the account you would like to get the password for: ");
-                let mut account_number = String::new();
-                std::io::stdin().read_line(&mut account_number).expect("Failed to read line");
-                account_number = account_number.trim().to_string();
-                let account_number = account_number.parse::<usize>().expect("Failed to parse account number");
-
-                if account_number == 0 {
-                    continue;
-                }
-
-                println!("The password for {} is: {}", account_list[0][account_number - 1], account_list[2][account_number - 1]);
-
-            }
-            "3" => {
-                // This will ask for the account associated with the password and delete it
-                println!("Please enter the name of the account you wish to delete: ");
-                let mut account = String::new();
-                std::io::stdin().read_line(&mut account).expect("Failed to read line");
-                account = account.trim().to_string();
-
-                println!("Please enter the website of the account you wish to delete: ");
-                let mut website = String::new();
-                std::io::stdin().read_line(&mut website).expect("Failed to read line");
-                website = website.trim().to_string();
-
-                let entry_id = storage_options_SQL::find_entry_id(user_id, account.as_str(), website.as_str(), &hashed_master);
-
-                storage_options_SQL::remove_password(entry_id)
-                    .expect("Failed to delete password");
-            }
-
-            "4" => {
-                break;
-            }
-
-            _ => {
-                println!("Invalid command");
-            }
-        }
-
-    }
-}
-
 fn init_user_id_table() {
     // This is the initialization of the storage database with the encrypted passwords in SQL using SQLx
     let conn = rusqlite::Connection::open("storage/users.db").unwrap();
@@ -378,7 +269,8 @@ fn init_user_id_table() {
         "CREATE TABLE IF NOT EXISTS user_id (
             user_id INTEGER PRIMARY KEY,
             account BLOB NOT NULL,
-            hashed_master_password BLOB NOT NULL
+            hashed_master_password BLOB NOT NULL,
+            salt BLOB
         )",
         [],
     ).expect("Failed to create SQL user_id table");
@@ -388,7 +280,7 @@ fn init_user_id_table() {
     let count: i32 = statement.query_row([], |row| row.get(0)).expect("Failed to get count of admin account");
 
     if count == 0 {
-        let hashed_master = encryption_algorithms::hash_master("admin");
+        let hashed_master = encryption_algorithms::hash_master("admin", [0; 32]);
         let hashed_master_vec = hashed_master.to_vec();
         conn.execute(
             "INSERT INTO user_id (user_id, account, hashed_master_password) VALUES (0, 'admin', ?)",
@@ -406,7 +298,8 @@ fn init_SQL_storage() {
             user_id INTEGER NOT NULL,
             account BLOB NOT NULL,
             password BLOB NOT NULL,
-            website BLOB NOT NULL
+            website BLOB NOT NULL,
+            salt BLOB
         )",
         [],
     ).expect("Failed to create SQL password table");
@@ -416,7 +309,9 @@ fn init_SQL_storage() {
     let count: i32 = statement.query_row([], |row| row.get(0)).expect("Failed to get count of admin account");
 
     if count == 0 {
-        let hashed_master = encryption_algorithms::hash_master("admin");
+        let hashed_master = encryption_algorithms::hash_master("admin", [0; 32]);
+        // Admin is a misnomer, since this doesn't really have any permissions, it is just the initial created account to avoid 
+        // Tricky edge cases in creation of the SQL tables
         let hashed_master_vec = hashed_master.to_vec();
         conn.execute(
             "INSERT INTO passwords (user_id, account, password, website) VALUES (0, 'admin', ?, 'admin')",
