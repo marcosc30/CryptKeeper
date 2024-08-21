@@ -159,3 +159,35 @@ pub fn remove_password(entry_id: i32) -> Result<(), Error> {
    
     Ok(())
 }
+
+pub fn change_master_password(user_id: i32, old_master_hashed: &[u8; 32], new_master_hashed: &[u8; 32], new_salt: &[u8; 32]) {
+    // This function is called when the master password is changed
+    // It decrypts all of the passwords, then re-encrypts them with the new master password
+    // This is done to ensure that the passwords are not lost when the master password is changed
+    let conn_passwords = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn_users = rusqlite::Connection::open("storage/users.db").expect("Failed to open database");
+
+    // Update the users database
+    conn_users.execute(
+        "UPDATE user_id SET hashed_master_password = ?, salt = ? WHERE user_id = ?",
+        rusqlite::params![new_master_hashed, new_salt, user_id]
+    ).expect("Failed to update user_id");
+
+    // Get all of the passwords
+    let accounts;
+    let websites;
+    let passwords;
+    [accounts, websites, passwords] = get_accounts(old_master_hashed, user_id);
+    
+    // Rencrypt all of the passwords
+    for i in 0..accounts.len() {
+        let encrypted_account = encrypt_password(&accounts[i], new_master_hashed);
+        let encrypted_website = encrypt_password(&websites[i], new_master_hashed);
+        let encrypted_password = encrypt_password(&passwords[i], new_master_hashed);
+
+        conn_passwords.execute(
+            "UPDATE passwords SET account = ?, website = ?, password = ? WHERE user_id = ?",
+            rusqlite::params![encrypted_account, encrypted_website, encrypted_password, user_id]
+        ).expect("Failed to update password");
+    }
+}

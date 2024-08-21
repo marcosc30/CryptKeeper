@@ -19,7 +19,8 @@ enum Screen {
     InsertMaster,
     Main,
     AddPassword,
-    GetPassword
+    GetPassword,
+    ChangeMasterPassword
 }
 struct PasswordManagerApp{
     current_screen: Screen,
@@ -31,10 +32,13 @@ struct PasswordManagerApp{
     text_buffer: String,
     current_account: String,
     current_website: String,
-    current_password: String
+    current_password: String,
+    password_attempts: i32,
+    password_limit: bool
 }
 
 impl PasswordManagerApp {
+    /// Creates a new PasswordManagerApp by initializing the fields to their default values
     fn new() -> Self {
         Self {
             current_screen: Screen::Login,
@@ -46,9 +50,13 @@ impl PasswordManagerApp {
             text_buffer: String::new(),
             current_account: String::new(),
             current_website: String::new(),
-            current_password: String::new()
+            current_password: String::new(),
+            password_attempts: 0,
+            password_limit: false
         }
     }
+    /// This function will display the login screen, where the user will enter their username
+    /// Depending on the username, the user will be taken to the insert master screen or the user not found screen
     fn login_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("Please enter a Username");
         ui.text_edit_singleline(&mut self.account);
@@ -63,6 +71,8 @@ impl PasswordManagerApp {
             }
         };
     }
+    /// This function will display the user not found screen, where the user will be asked if they want to create a new user
+    /// If they do, they will be taken to the enter new master screen where the inserted username is used as a username
     fn user_not_found_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("User not found, would you like to create a new user?");
         if ui.button("Yes").clicked() {
@@ -74,6 +84,8 @@ impl PasswordManagerApp {
             return;
         }
     } 
+    /// This function will display the enter new master screen, where the user will enter a new master password
+    /// and with it, an account is created
     fn enter_new_master_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("Please enter the new master password: ");
         ui.text_edit_singleline(&mut self.text_buffer);
@@ -91,15 +103,64 @@ impl PasswordManagerApp {
             self.current_screen = Screen::Login;
         }              
     }
+    /// This function will display the change master password screen, where the user will enter their new master password
+    /// and with it, the master password will be changed
+    fn change_master_screen(&mut self, ui: &mut egui::Ui) {
+        ui.label("Please enter the new master password: ");
+        ui.text_edit_singleline(&mut self.text_buffer);
+        let master_password = self.text_buffer.clone();
+
+        ui.label("Please confirm the new master password: ");
+        ui.text_edit_singleline(&mut self.current_password);
+
+        // Add password confirmation here
+
+        if (ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter))) && self.text_buffer == master_password {
+            self.current_password.clear();
+
+            // generate a new random salt
+            let salt = rand::thread_rng().gen::<[u8; 32]>();
+            let hashed_master = encryption_algorithms::hash_master(&master_password, salt);
+
+            storage_options_sql::change_master_password(self.user_id, &self.hashed_master, &hashed_master, &salt);
+
+            self.hashed_master = hashed_master;
+            self.text_buffer.clear();
+            self.current_screen = Screen::Login;
+        }      
+    }       
+    
+    /// This function will display the insert master screen, where the user will enter their master password
+    /// If the master password is correct, the user will be taken to the main screen
+    /// If the master password is incorrect, the user will be shown an error message and be given a chance it insert it again
+    /// A locking mechanism at the SQL level will be introduced in the future to prevent brute force attacks
+    /// For now, it returns you to the login screen after 10 attempts
+    /// Since the database is stored locally, brute force attacks can be done regardless of this software, but in the cloud
+    /// It will be implemented to prevent any type of brute force attacks
     fn insert_master_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("Please enter the master password: ");
         ui.text_edit_singleline(&mut self.text_buffer);
+
+        if self.password_attempts > 20 && self.password_limit == true {
+            // I'm going to implement a locking technique here stored in the file, that calculates the current date
+            // And adds a certain amount of time to it, and if the current date is less than that time, the user is locked out
+            self.current_screen = Screen::Login;
+            self.password_attempts = 0;
+            self.text_buffer.clear();
+            self.hashed_master = [0; 32];
+            self.user_id = 0;
+            self.account.clear();
+            self.salt = [0; 32];
+            self.display_incorrect_msg = false;
+            return;
+        }
 
         if self.display_incorrect_msg {
             ui.label("Incorrect master password, please try again");
         }
 
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            self.password_attempts += 1;
             let master_password = self.text_buffer.clone();
 
             let salt = storage_options_sql::get_salt(self.user_id); 
@@ -118,18 +179,26 @@ impl PasswordManagerApp {
                 self.display_incorrect_msg = true;
                 println!("Incorrect master password");
                 return;
+            } else {
+                self.password_attempts = 0;
+                self.display_incorrect_msg = false;
+                self.current_screen = Screen::Main;
             }
-            self.current_screen = Screen::Main;
         }
     }
+    /// This function will display the main screen, where the user can add a password, check for compromised passwords,
+    /// get any password, delete any password, exit the application
+    /// The check for compromised passwords is not implemented yet
     fn main_screen(&mut self, ui: &mut egui::Ui) {
-        // This main screen will be different to the terminal version, it will have buttons for each of the commands
-        // It will have an add a password button at the top
-        // Then a list of all the accounts associated with the user_id, with buttons next to each one to get the password or delete the password
-        // Then a button to exit
+        self.current_account.clear();
+        self.current_website.clear();
+        self.current_password.clear();
 
         if ui.button("Add a password").clicked() {
             self.current_screen = Screen::AddPassword;
+        }
+        if ui.button("Change Master Password").clicked() {
+            self.current_screen = Screen::ChangeMasterPassword;
         }
         if ui.button("Exit").clicked() {
             self.hashed_master = [0; 32];
@@ -247,7 +316,8 @@ impl eframe::App for PasswordManagerApp {
                 Screen::UserNotFound => self.user_not_found_screen(ui),
                 Screen::EnterNewMaster => self.enter_new_master_screen(ui),
                 Screen::AddPassword => self.add_password_screen(ui),
-                Screen::GetPassword => self.get_password_screen(ui)
+                Screen::GetPassword => self.get_password_screen(ui),
+                Screen::ChangeMasterPassword => self.change_master_screen(ui)
             }
         });
     }

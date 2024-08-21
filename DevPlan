@@ -1,5 +1,7 @@
 In Rust
 - Add rigorous testing for all of these functions
-- Add salts to password hashing
+- Add account lockouts after too many attempts
 - Add change password/account details
+- Add confirmation for changing password
+- Address possibility of two accounts having same name and website when creating the duplicate account
 - Same for change master password, which could possibly be done by reusing the enter_new_master by adding a flag to see if it is a new user/if a user has passwords stored that need rencrypting
