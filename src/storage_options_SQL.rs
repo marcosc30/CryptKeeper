@@ -1,9 +1,8 @@
 use crate::encryption_algorithms::encrypt_password;
 use crate::encryption_algorithms::decrypt_password;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::str;
 use rusqlite;
-use rand::Rng;
 
 pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32], salt: &[u8; 32]) -> Result<i32, Error> {
     // Returns the new user_id of the user account
@@ -78,11 +77,10 @@ pub fn add_password(user_id: i32, account: &str, password: &str, hashed_master: 
 
     let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
 
-    let mut entry_id = 0;
     let mut statement = conn.prepare("SELECT MAX(entry_id) FROM passwords").expect("Failed to prepare statement");
     let max: i32 = statement.query_row([], |row| row.get(0)).expect("Failed to get max entry_id");
 
-    entry_id = max + 1;
+    let entry_id = max + 1;
 
     conn.execute(
         "INSERT INTO passwords (entry_id, user_id, account, password, website) VALUES (?, ?, ?, ?, ?)",
@@ -108,9 +106,9 @@ pub fn get_accounts(hashed_master: &[u8; 32], user_id: i32) -> [Vec<String>; 3] 
     let mut rows = statement.query(&[&user_id]).unwrap();
 
     while let Some(row) = rows.next().unwrap() {
-        let encrypted_account: Vec<u8> = row.get(0).unwrap();
-        let encrypted_website: Vec<u8> = row.get(1).unwrap();
-        let encrypted_password: Vec<u8> = row.get(2).unwrap();
+        let encrypted_account: Vec<u8> = row.get(0).expect("Failed to get account");
+        let encrypted_website: Vec<u8> = row.get(1).expect("Failed to get website");
+        let encrypted_password: Vec<u8> = row.get(2).expect("Failed to get password");
 
         let account = decrypt_password(&encrypted_account, hashed_master);
         let website = decrypt_password(&encrypted_website, hashed_master);

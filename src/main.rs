@@ -2,16 +2,15 @@
 
 use egui::Stroke;
 use rusqlite::Connection;
-mod storage_options_SQL;
+mod storage_options_sql;
 mod encryption_algorithms;
+mod password_generator;
 use eframe::egui;
-use std::fs;
 use clipboard::{ClipboardContext, ClipboardProvider};
 use egui::FontFamily::Proportional;
 use egui::FontId;
 use egui::TextStyle::*;
 use rand::Rng;
-
 
 enum Screen {
     Login,
@@ -53,7 +52,7 @@ impl PasswordManagerApp {
         ui.text_edit_singleline(&mut self.account);
 
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            self.user_id = storage_options_SQL::get_user_id(&self.account)
+            self.user_id = storage_options_sql::get_user_id(&self.account)
                 .expect("Failed to get user id");
             if self.user_id == 0 {
                 self.current_screen = Screen::UserNotFound;
@@ -86,7 +85,7 @@ impl PasswordManagerApp {
             let salt = rand::thread_rng().gen::<[u8; 32]>();
             let hashed_master = encryption_algorithms::hash_master(&master_password, salt);
             self.hashed_master = hashed_master;
-            self.user_id = storage_options_SQL::add_user_id(self.account.as_str(), &hashed_master, &salt).expect("Failed to add user_id");
+            self.user_id = storage_options_sql::add_user_id(self.account.as_str(), &hashed_master, &salt).expect("Failed to add user_id");
             self.current_screen = Screen::Login;
         }              
     }
@@ -97,14 +96,14 @@ impl PasswordManagerApp {
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let master_password = self.text_buffer.clone();
             self.text_buffer.clear();
-            let salt = storage_options_SQL::get_salt(self.user_id); 
+            let salt = storage_options_sql::get_salt(self.user_id); 
             for i in 0..32 {
                 self.salt[i] = salt[i];
             }
             let hashed_master = encryption_algorithms::hash_master(&master_password, self.salt);
             self.hashed_master = hashed_master;
             let hashed_master_vec = hashed_master.to_vec();
-            let hashed_user_master = storage_options_SQL::get_hashed_master(self.user_id);
+            let hashed_user_master = storage_options_sql::get_hashed_master(self.user_id);
 
             if hashed_master_vec != hashed_user_master {
                 self.hashed_master = [0; 32];
@@ -124,10 +123,11 @@ impl PasswordManagerApp {
             self.current_screen = Screen::AddPassword;
         }
         if ui.button("Exit").clicked() {
+            self.current_screen = Screen::Login;
             self.hashed_master = [0; 32];
             self.user_id = 0;
             self.account.clear();
-            self.current_screen = Screen::Login;
+            self.salt = [0; 32];
         }
 
         // if ui.button("Check for compromised passwords").clicked() {
@@ -135,7 +135,7 @@ impl PasswordManagerApp {
         //     // It will then display a list of all the compromised passwords
         // }
 
-        let account_list = storage_options_SQL::get_accounts(&self.hashed_master, self.user_id);
+        let account_list = storage_options_sql::get_accounts(&self.hashed_master, self.user_id);
 
         for (i, account) in account_list[0].iter().enumerate() {
             ui.horizontal(|ui| {
@@ -147,8 +147,8 @@ impl PasswordManagerApp {
                     self.current_screen = Screen::GetPassword;
                 }
                 if ui.button("Delete Password").clicked() {
-                    let entry_id = storage_options_SQL::find_entry_id(self.user_id, account.as_str(), account_list[1][i].as_str(), &self.hashed_master);
-                    storage_options_SQL::remove_password(entry_id)
+                    let entry_id = storage_options_sql::find_entry_id(self.user_id, account.as_str(), account_list[1][i].as_str(), &self.hashed_master);
+                    storage_options_sql::remove_password(entry_id)
                         .expect("Failed to delete password");
                 }
             });
@@ -164,9 +164,12 @@ impl PasswordManagerApp {
 
         ui.label("Please enter the password: ");
         ui.text_edit_singleline(&mut self.current_password);
+        if ui.button("Generate password").clicked() {
+            self.current_password = password_generator::generate_password(16);
+        }
 
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            storage_options_SQL::add_password(self.user_id, &self.current_account, &self.current_password, &self.hashed_master, &self.current_website)
+            storage_options_sql::add_password(self.user_id, &self.current_account, &self.current_password, &self.hashed_master, &self.current_website)
                 .expect("Failed to add password");
             self.current_account.clear();
             self.current_website.clear();
@@ -235,8 +238,7 @@ impl eframe::App for PasswordManagerApp {
                 Screen::UserNotFound => self.user_not_found_screen(ui),
                 Screen::EnterNewMaster => self.enter_new_master_screen(ui),
                 Screen::AddPassword => self.add_password_screen(ui),
-                Screen::GetPassword => self.get_password_screen(ui),
-                _ => {}
+                Screen::GetPassword => self.get_password_screen(ui)
             }
         });
     }
@@ -252,14 +254,14 @@ impl eframe::App for PasswordManagerApp {
 
 fn main() {
     std::fs::create_dir_all("storage").expect("Failed to create storage directory");
-    init_SQL_storage();
+    init_sql_storage();
     init_user_id_table();
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Password Manager App",
         options,
         Box::new(|_cc| Ok(Box::new(PasswordManagerApp::new()))),
-    );
+    ).expect("Failed to run native");
 }
 
 fn init_user_id_table() {
@@ -289,7 +291,7 @@ fn init_user_id_table() {
     }
 }
 
-fn init_SQL_storage() {
+fn init_sql_storage() {
     // This is the initialization of the storage database with the encrypted passwords in SQL using SQLx
     let conn = Connection::open("storage/passwords.db").unwrap();
     conn.execute(
