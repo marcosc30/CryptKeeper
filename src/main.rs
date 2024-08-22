@@ -219,8 +219,10 @@ impl PasswordManagerApp {
         if ui.button("Change Master Password").clicked() {
             self.current_screen = Screen::ChangeMasterPassword;
         }
+
         if ui.button("Exit").clicked() {
             self.hashed_master = [0; 32];
+            self.text_buffer.clear();
             self.user_id = 0;
             self.account.clear();
             self.salt = [0; 32];
@@ -230,12 +232,35 @@ impl PasswordManagerApp {
             //     // This will check all the passwords associated with the user_id and see if they have been compromised
             //     // It will then display a list of all the compromised passwords
             // }
+            ui.horizontal(|ui| {
+                ui.label("Search for an account: ");
+                ui.text_edit_singleline(&mut self.text_buffer);
+            });
 
-            let account_list = storage_options_sql::get_accounts(&self.hashed_master, self.user_id);
+            let mut account_list = storage_options_sql::get_accounts(&self.hashed_master, self.user_id);
+            // Filter the accounts to match the text_buffer, storing the indices of matching account triplets
+            let mut indices = Vec::new();
+            for i in 0..account_list[0].len() {
+                if account_list[0][i].contains(&self.text_buffer) || account_list[1][i].contains(&self.text_buffer) {
+                    indices.push(i);
+                }
+            }
+
+            // Create a new account list with only the matching accounts
+            account_list = [
+                indices.iter().map(|&i| account_list[0][i].clone()).collect(),
+                indices.iter().map(|&i| account_list[1][i].clone()).collect(),
+                indices.iter().map(|&i| account_list[2][i].clone()).collect()
+            ];
+
+            if account_list[0].is_empty() {
+                ui.label("No accounts found");
+            }
 
             for (i, account) in account_list[0].iter().enumerate() {
                 ui.horizontal(|ui| {
                     ui.label(account);
+                    ui.label(account_list[1][i].as_str());
                     if ui.button("Get Password").clicked() {
                         self.current_account =  account_list[0][i].clone();
                         self.current_website = account_list[1][i].clone();
