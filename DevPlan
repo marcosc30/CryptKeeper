@@ -1,4 +1,3 @@
-In Rust
 - Add rigorous testing for storage options
 - Add account lockouts after too many attempts
 - Add cloud storage
