@@ -1,4 +1,4 @@
 In Rust
-- Add rigorous testing for all of these functions
+- Add rigorous testing for storage options
 - Add account lockouts after too many attempts
 - Add cloud storage
