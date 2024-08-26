@@ -241,7 +241,11 @@ impl PasswordManagerApp {
             // Filter the accounts to match the text_buffer, storing the indices of matching account triplets
             let mut indices = Vec::new();
             for i in 0..account_list[0].len() {
-                if account_list[0][i].contains(&self.text_buffer) || account_list[1][i].contains(&self.text_buffer) {
+                // Make a copy of the text_buffer that is all lowercase and convert the account names to lowercase
+                let text_buffer_lower = self.text_buffer.to_lowercase();
+                let account_lower = account_list[0][i].to_lowercase();
+                let website_lower = account_list[1][i].to_lowercase();
+                if account_lower.contains(&text_buffer_lower) || website_lower.contains(&text_buffer_lower) {
                     indices.push(i);
                 }
             }
