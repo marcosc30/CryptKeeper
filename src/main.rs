@@ -2,7 +2,6 @@
 mod storage_options_sql;
 mod encryption_algorithms;
 mod password_generator;
-
 use egui::Color32;
 use egui::RichText;
 use egui::Stroke;
@@ -30,6 +29,7 @@ struct PasswordManagerApp{
     user_id: i32,
     account: String,
     salt: [u8; 32],
+    kdf_salt: [u8; 32],
     hashed_master: [u8; 32],
     text_buffer: String,
     current_account: String,
@@ -49,6 +49,7 @@ impl PasswordManagerApp {
             user_id: 0,
             account: String::new(),
             salt: [0; 32],
+            kdf_salt: [0; 32],
             hashed_master: [0; 32],
             text_buffer: String::new(),
             current_account: String::new(),
@@ -103,7 +104,12 @@ impl PasswordManagerApp {
             let salt = rand::thread_rng().gen::<[u8; 32]>();
             let hashed_master = encryption_algorithms::hash_master(&master_password, salt);
             self.hashed_master = hashed_master;
-            self.user_id = storage_options_sql::add_user_id(self.account.as_str(), &hashed_master, &salt).expect("Failed to add user_id");
+            // Generate another random salt to serve as the kdf salt
+            let mut kdf_salt = rand::thread_rng().gen::<[u8; 32]>();
+            while kdf_salt == salt {
+                kdf_salt = rand::thread_rng().gen::<[u8; 32]>();
+            }
+            self.user_id = storage_options_sql::add_user_id(self.account.as_str(), &hashed_master, &salt, &kdf_salt).expect("Failed to add user_id");
             self.current_screen = Screen::Login;
         }              
     }
@@ -131,7 +137,13 @@ impl PasswordManagerApp {
             let salt = rand::thread_rng().gen::<[u8; 32]>();
             let hashed_master = encryption_algorithms::hash_master(&master_password, salt);
 
-            storage_options_sql::change_master_password(self.user_id, &self.hashed_master, &hashed_master, &salt);
+            // Generate a new random kdf salt
+            let mut kdf_salt = rand::thread_rng().gen::<[u8; 32]>();
+            while kdf_salt == salt {
+                kdf_salt = rand::thread_rng().gen::<[u8; 32]>();
+            }
+
+            storage_options_sql::change_master_password(self.user_id, &self.hashed_master, &hashed_master, &salt, &kdf_salt);
 
             self.hashed_master = hashed_master;
             self.text_buffer.clear();
@@ -196,6 +208,12 @@ impl PasswordManagerApp {
                 self.master_safe = password_generator::check_password_safety(&master_password);
                 self.password_attempts = 0;
                 self.display_incorrect_msg = false;
+                // Change the hash to be the KDF hash, so that the stored hash cannot actually decrypt anything
+                let kdf_salt = storage_options_sql::get_kdf_salt(self.user_id);
+                for i in 0..32 {
+                    self.kdf_salt[i] = kdf_salt[i];
+                }
+                self.hashed_master = encryption_algorithms::hash_master(&master_password, self.kdf_salt);
                 self.current_screen = Screen::Main;
             }
         }
@@ -424,7 +442,8 @@ fn init_user_id_table() {
             user_id INTEGER PRIMARY KEY,
             account BLOB NOT NULL,
             hashed_master_password BLOB NOT NULL,
-            salt BLOB
+            salt BLOB,
+            kdf_salt BLOB
         )",
         [],
     ).expect("Failed to create SQL user_id table");
@@ -453,8 +472,7 @@ fn init_sql_storage() {
             user_id INTEGER NOT NULL,
             account BLOB NOT NULL,
             password BLOB NOT NULL,
-            website BLOB NOT NULL,
-            salt BLOB
+            website BLOB NOT NULL
         )",
         [],
     ).expect("Failed to create SQL password table");

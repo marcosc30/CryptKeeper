@@ -5,7 +5,7 @@ use std::str;
 use rusqlite;
 
 /// Creates a new user in the database
-pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32], salt: &[u8; 32]) -> Result<i32, Error> {
+pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32], salt: &[u8; 32], kdf_salt: &[u8; 32]) -> Result<i32, Error> {
     // Open the database
     let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
     // Find the largest user_id, then we add 1 to it to define the new user_id
@@ -27,8 +27,8 @@ pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32], salt: &[u8; 32]
 
     // Add the user_id to the database
     conn.execute(
-        "INSERT INTO user_id (account, user_id, hashed_master_password, salt) VALUES (?, ?, ?, ?)",
-        rusqlite::params![user_account, user_id, hashed_master_vector, salt]
+        "INSERT INTO user_id (account, user_id, hashed_master_password, salt, kdf_salt) VALUES (?, ?, ?, ?, ?)",
+        rusqlite::params![user_account, user_id, hashed_master_vector, salt, kdf_salt]
     ).expect("Failed to add user_id");
 
     Ok(user_id)
@@ -58,6 +58,22 @@ pub fn get_salt(user_id: i32) -> Vec<u8> {
     // Find the salt of the user account
     let mut salt = Vec::new();
     let mut statement = conn.prepare("SELECT salt FROM user_id WHERE user_id = ?").expect("Failed to prepare statement");
+    let mut rows = statement.query(&[&user_id]).unwrap();
+    while let Some(row) = rows.next().unwrap() {
+        salt = row.get(0).unwrap();
+    }
+
+    salt
+}
+
+/// Get the KDF salt of a user account
+pub fn get_kdf_salt(user_id: i32) -> Vec<u8> {
+    // Open the database
+    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+
+    // Find the salt of the user account
+    let mut salt = Vec::new();
+    let mut statement = conn.prepare("SELECT kdf_salt FROM user_id WHERE user_id = ?").expect("Failed to prepare statement");
     let mut rows = statement.query(&[&user_id]).unwrap();
     while let Some(row) = rows.next().unwrap() {
         salt = row.get(0).unwrap();
@@ -184,14 +200,14 @@ pub fn remove_password(entry_id: i32) -> Result<(), Error> {
 }
 
 /// Change the master password of a user
-pub fn change_master_password(user_id: i32, old_master_hashed: &[u8; 32], new_master_hashed: &[u8; 32], new_salt: &[u8; 32]) {
+pub fn change_master_password(user_id: i32, old_master_hashed: &[u8; 32], new_master_hashed: &[u8; 32], new_salt: &[u8; 32], new_kdf_salt: &[u8; 32]) {
     // Open the databases
     let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
 
     // Update the users database
     conn.execute(
-        "UPDATE user_id SET hashed_master_password = ?, salt = ? WHERE user_id = ?",
-        rusqlite::params![new_master_hashed, new_salt, user_id]
+        "UPDATE user_id SET hashed_master_password = ?, salt = ?, kdf_salt = ? WHERE user_id = ?",
+        rusqlite::params![new_master_hashed, new_salt, new_kdf_salt, user_id]
     ).expect("Failed to update user_id");
 
     // Get all of the passwords, which decrypts them so they can be reencrypted later
