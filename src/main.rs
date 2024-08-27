@@ -210,6 +210,9 @@ impl PasswordManagerApp {
                 self.display_incorrect_msg = false;
                 // Change the hash to be the KDF hash, so that the stored hash cannot actually decrypt anything
                 let kdf_salt = storage_options_sql::get_kdf_salt(self.user_id);
+                for i in 0..32 {
+                    self.kdf_salt[i] = kdf_salt[i];
+                }
                 self.hashed_master = encryption_algorithms::hash_master(&master_password, self.kdf_salt);
                 self.current_screen = Screen::Main;
             }
