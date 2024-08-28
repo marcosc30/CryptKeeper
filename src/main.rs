@@ -2,6 +2,7 @@
 mod storage_options_sql;
 mod encryption_algorithms;
 mod password_generator;
+mod storage_options_cloud;
 use egui::Color32;
 use egui::RichText;
 use egui::Stroke;
@@ -417,14 +418,21 @@ impl eframe::App for PasswordManagerApp {
         self.current_website.clear();
         self.current_password.clear();
     }
-
 }
 
 // This is the main function that will run the application by running native egui
 fn main() {
-    std::fs::create_dir_all("storage").expect("Failed to create storage directory");
-    init_sql_storage();
-    init_user_id_table();
+    //std::fs::create_dir_all("storage").expect("Failed to create storage directory");
+    // init_sql_storage();
+    // init_user_id_table();
+
+    let client = reqwest::Client::new();
+    let baseurl = "http://localhost:8000";
+
+    // This puts the user_id table into memory so we can use it as we normally would
+    storage_options_cloud::user_id_response_to_sql(storage_options_cloud::get_user_id_table(&client, baseurl).expect("Failed to get user_id table"))
+        .expect("Failed to convert user_id response to SQL");
+
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Password Manager App",
@@ -443,7 +451,8 @@ fn init_user_id_table() {
             account BLOB NOT NULL,
             hashed_master_password BLOB NOT NULL,
             salt BLOB,
-            kdf_salt BLOB
+            kdf_salt BLOB,
+            open_instances INTEGER DEFAULT 0
         )",
         [],
     ).expect("Failed to create SQL user_id table");
