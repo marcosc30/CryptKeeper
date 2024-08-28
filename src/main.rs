@@ -38,7 +38,9 @@ struct PasswordManagerApp{
     current_password: String,
     password_attempts: i32,
     password_limit: bool,
-    master_safe: (u32, Vec<String>)
+    master_safe: (u32, Vec<String>),
+    client: reqwest::Client,
+    baseurl: String
 }
 
 impl PasswordManagerApp {
@@ -58,18 +60,25 @@ impl PasswordManagerApp {
             current_password: String::new(),
             password_attempts: 0,
             password_limit: false,
-            master_safe: (0, Vec::new())
+            master_safe: (0, Vec::new()),
+            client: reqwest::Client::new(),
+            baseurl: "http://localhost:8000".to_string()
         }
     }
     /// This function will display the login screen, where the user will enter their username
     /// Depending on the username, the user will be taken to the insert master screen or the user not found screen
-    fn login_screen(&mut self, ui: &mut egui::Ui) {
+    async fn login_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("Please enter a Username");
         ui.text_edit_singleline(&mut self.account);
-
+    
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            self.user_id = storage_options_sql::get_user_id(&self.account)
-                .expect("Failed to get user id");
+            let salt_temp: Vec<u8>;
+            let kdf_salt_temp: Vec<u8>;
+            (self.user_id, salt_temp, kdf_salt_temp) = storage_options_cloud::get_user_id(&self.client, &self.baseurl, self.account.as_str()).await.expect("Failed to get user_id");
+            for i in 0..32 {
+                self.salt[i] = salt_temp[i];
+                self.kdf_salt[i] = kdf_salt_temp[i];
+            }
             if self.user_id == 0 {
                 self.current_screen = Screen::UserNotFound;
             } else {
@@ -82,7 +91,7 @@ impl PasswordManagerApp {
     fn user_not_found_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("User not found, would you like to create a new user?");
         if ui.button("Yes").clicked() {
-           self.current_screen = Screen::EnterNewMaster;      
+           self.current_screen = Screen::EnterNewMaster;
         }
         if ui.button("No").clicked() {
             println!("User not found");
@@ -92,7 +101,7 @@ impl PasswordManagerApp {
     } 
     /// This function will display the enter new master screen, where the user will enter a new master password
     /// and with it, an account is created
-    fn enter_new_master_screen(&mut self, ui: &mut egui::Ui) {
+    async fn enter_new_master_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("Please enter the new master password: ");
         ui.text_edit_singleline(&mut self.text_buffer);
         let master_password = self.text_buffer.clone();
@@ -110,10 +119,17 @@ impl PasswordManagerApp {
             while kdf_salt == salt {
                 kdf_salt = rand::thread_rng().gen::<[u8; 32]>();
             }
-            self.user_id = storage_options_sql::add_user_id(self.account.as_str(), &hashed_master, &salt, &kdf_salt).expect("Failed to add user_id");
-            self.current_screen = Screen::Login;
+            match storage_options_cloud::register_user(&self.client, &self.baseurl, self.account.as_str(), &self.hashed_master, &salt, &kdf_salt).await {
+                Ok(()) => {
+                    self.salt = salt;
+                    self.kdf_salt = kdf_salt;
+                    self.current_screen = Screen::Login;
+                },
+                Err(err) => eprintln!("Failed to register user: {}", err),
+            }
         }              
     }
+    
     /// This function will display the change master password screen, where the user will enter their new master password
     /// and with it, the master password will be changed
     fn change_master_screen(&mut self, ui: &mut egui::Ui) {
@@ -163,7 +179,7 @@ impl PasswordManagerApp {
     /// For now, it returns you to the login screen after 10 attempts
     /// Since the database is stored locally, brute force attacks can be done regardless of this software, but in the cloud
     /// It will be implemented to prevent any type of brute force attacks
-    fn insert_master_screen(&mut self, ui: &mut egui::Ui) {
+    async fn insert_master_screen(&mut self, ui: &mut egui::Ui) {
         ui.label("Please enter the master password: ");
         ui.text_edit_singleline(&mut self.text_buffer);
 
@@ -178,7 +194,6 @@ impl PasswordManagerApp {
             self.account.clear();
             self.salt = [0; 32];
             self.display_incorrect_msg = false;
-            return;
         }
 
         if self.display_incorrect_msg {
@@ -188,35 +203,16 @@ impl PasswordManagerApp {
         if ui.button("Submit").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             self.password_attempts += 1;
             let master_password = self.text_buffer.clone();
-
-            let salt = storage_options_sql::get_salt(self.user_id); 
-            for i in 0..32 {
-                self.salt[i] = salt[i];
-            }
-
-            self.text_buffer.clear();
+            
             let hashed_master = encryption_algorithms::hash_master(&master_password, self.salt);
-            self.hashed_master = hashed_master;
-            let hashed_master_vec = hashed_master.to_vec();
-            let hashed_user_master = storage_options_sql::get_hashed_master(self.user_id);
+            let pw_items = storage_options_cloud::get_accounts(&self.client, &self.baseurl, &self.account, &hashed_master).await.expect("Failed to get passwords");
+            storage_options_cloud::password_items_to_sql(pw_items).expect("Failed to convert password items to SQL");
+            
 
-            if hashed_master_vec != hashed_user_master {
-                self.hashed_master = [0; 32];
-                self.display_incorrect_msg = true;
-                println!("Incorrect master password");
-                return;
-            } else {
-                self.master_safe = password_generator::check_password_safety(&master_password);
-                self.password_attempts = 0;
-                self.display_incorrect_msg = false;
-                // Change the hash to be the KDF hash, so that the stored hash cannot actually decrypt anything
-                let kdf_salt = storage_options_sql::get_kdf_salt(self.user_id);
-                for i in 0..32 {
-                    self.kdf_salt[i] = kdf_salt[i];
-                }
-                self.hashed_master = encryption_algorithms::hash_master(&master_password, self.kdf_salt);
-                self.current_screen = Screen::Main;
-            }
+            self.master_safe = password_generator::check_password_safety(&master_password);
+            self.display_incorrect_msg = false;
+            self.hashed_master = encryption_algorithms::hash_master(&master_password, self.kdf_salt);
+            self.current_screen = Screen::Main;
         }
     }
     /// This function will display the main screen, where the user can add a password, check for compromised passwords,
@@ -425,13 +421,6 @@ fn main() {
     //std::fs::create_dir_all("storage").expect("Failed to create storage directory");
     // init_sql_storage();
     // init_user_id_table();
-
-    let client = reqwest::Client::new();
-    let baseurl = "http://localhost:8000";
-
-    // This puts the user_id table into memory so we can use it as we normally would
-    storage_options_cloud::user_id_response_to_sql(storage_options_cloud::get_user_id_table(&client, baseurl).expect("Failed to get user_id table"))
-        .expect("Failed to convert user_id response to SQL");
 
     let options = eframe::NativeOptions::default();
     eframe::run_native(

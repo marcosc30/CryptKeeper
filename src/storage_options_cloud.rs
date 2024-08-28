@@ -65,31 +65,43 @@ struct ErrorResponse {
     error: String,
 }
 
+#[derive(Serialize)]
+struct UserIDRequest {
+    account_name: String
+}
+
 #[derive(Deserialize)]
-struct UserIdEntry {
+struct UserIDResponse {
     user_id: i32,
-    account: Vec<u8>,
-    hashed_master_password: Vec<u8>,
-    salt: Vec<u8>,
-    kdf_salt: Vec<u8>,
-    open_instances: i32,
+    salt: String, // Base64 encoded
+    kdf_salt: String, // Base64 encoded
 }
 
-#[derive(Deserialize)]
-struct UserIDTableResponse {
-    user_id_entries: Vec<UserIdEntry>,
+#[derive(Serialize)]
+struct UserRegistrationRequest {
+    account_name: String,
+    hashed_master_password: String, // Base64 encoded
+    salt: String, // Base64 encoded
+    kdf_salt: String, // Base64 encoded
 }
 
-pub async fn get_user_id_table (client: &Client, base_url: &str) -> Result<UserIDTableResponse, Box<dyn std::error::Error>> {
+// We need a function to get a user id and the salts associated with that account 
+pub async fn get_user_id (client: &Client, base_url: &str, account_name: &str) -> Result<(i32, Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
+    let request_body = UserIDRequest {
+        account_name: account_name.to_string()
+    };
+
     let response = client
-        .post(&format!("{}/get_user_id_table", base_url))
-        .json(&serde_json::Value::Null)
+        .post(&format!("{}/get_user_id", base_url))
+        .json(&request_body)
         .send()
         .await?;
 
     if response.status().is_success() {
-        let user_id_table: UserIDTableResponse = response.json().await?;
-        Ok(user_id_table)
+        let response_body: UserIDResponse = response.json().await?;
+        let salt = decode_base64(&response_body.salt)?;
+        let kdf_salt = decode_base64(&response_body.kdf_salt)?;
+        Ok((response_body.user_id, salt, kdf_salt))
     } else {
         let error_response: ErrorResponse = response.json().await?;
         Err(Box::new(std::io::Error::new(
@@ -99,30 +111,32 @@ pub async fn get_user_id_table (client: &Client, base_url: &str) -> Result<UserI
     }
 }
 
-pub fn user_id_response_to_sql (user_id_table: UserIDTableResponse) -> Result<(), Error> {
-    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
-    conn.execute(
-        "CREATE TABLE user_id (
-            user_id INTEGER PRIMARY KEY,
-            account BLOB NOT NULL,
-            hashed_master_password BLOB NOT NULL,
-            salt BLOB,
-            kdf_salt BLOB,
-            open_instances INTEGER NOT NULL
-        )",
-        [],
-    ).expect("Failed to create table");
+pub async fn register_user(client: &Client, base_url: &str, account_name: &str, hashed_master: &[u8; 32], salt: &[u8; 32], kdf_salt: &[u8; 32]) -> Result<(), Box<dyn std::error::Error>> {
+    let request_body = UserRegistrationRequest {
+        account_name: account_name.to_string(),
+        hashed_master_password: encode_base64(hashed_master),
+        salt: encode_base64(salt),
+        kdf_salt: encode_base64(kdf_salt),
+    };
 
-    for user_id_entry in user_id_table.user_id_entries {
-        conn.execute(
-            "INSERT INTO user_id (user_id, account, hashed_master_password, salt, kdf_salt, open_instances) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![user_id_entry.user_id, user_id_entry.account, user_id_entry.hashed_master_password, user_id_entry.salt, user_id_entry.kdf_salt, user_id_entry.open_instances],
-        ).expect("Failed to insert data");
+    let response = client
+        .post(&format!("{}/register_user", base_url))
+        .json(&request_body)
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        let error_response: ErrorResponse = response.json().await?;
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            error_response.error,
+        )))
     }
-    Ok(())
 }
 
-async fn get_accounts(client: &Client, base_url: &str, account_name: &str, hashed_master: &[u8; 32]) -> Result<Vec<PasswordItemReceiveConverted>, Box<dyn std::error::Error>> {
+pub async fn get_accounts(client: &Client, base_url: &str, account_name: &str, hashed_master: &[u8; 32]) -> Result<Vec<PasswordItemReceiveConverted>, Box<dyn std::error::Error>> {
     let request_body = GetAccountsRequest {
         account_name: account_name.to_string(),
         hashed_password: encode_base64(hashed_master),
@@ -217,8 +231,8 @@ fn prepare_sync_data () -> Vec<PasswordItemSend> {
     }).collect()
 }
 
-// Convertes the password_items vector to a SQL .db file and saves it locally, this file is deleted on program exit
-fn password_items_to_sql (password_items: Vec<PasswordItemReceiveConverted>) -> Result<(), Error> {
+// Converts the password_items vector to a SQL .db file and saves it locally, this file is deleted on program exit
+pub fn password_items_to_sql (password_items: Vec<PasswordItemReceiveConverted>) -> Result<(), Error> {
     let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
     conn.execute(
         "CREATE TABLE passwords (

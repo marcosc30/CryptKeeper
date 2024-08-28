@@ -7,7 +7,7 @@ use rusqlite;
 /// Creates a new user in the database
 pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32], salt: &[u8; 32], kdf_salt: &[u8; 32]) -> Result<i32, Error> {
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
     // Find the largest user_id, then we add 1 to it to define the new user_id
     let mut statement = conn.prepare("SELECT MAX(user_id) FROM user_id").expect("Failed to prepare statement");
     let max: i32 = statement.query_row([], |row| row.get(0)).expect("Failed to get max user_id");
@@ -37,7 +37,7 @@ pub fn add_user_id(user_account: &str, hashed_master: &[u8; 32], salt: &[u8; 32]
 /// Get the user_id of a user account
 pub fn get_user_id(user_account: &str) -> Result<i32, Error> {
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
 
     // Find the user_id of the user account
     let mut user_id = 0;
@@ -53,7 +53,7 @@ pub fn get_user_id(user_account: &str) -> Result<i32, Error> {
 /// Get the salt of a user account
 pub fn get_salt(user_id: i32) -> Vec<u8> {
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
 
     // Find the salt of the user account
     let mut salt = Vec::new();
@@ -69,7 +69,7 @@ pub fn get_salt(user_id: i32) -> Vec<u8> {
 /// Get the KDF salt of a user account
 pub fn get_kdf_salt(user_id: i32) -> Vec<u8> {
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
 
     // Find the salt of the user account
     let mut salt = Vec::new();
@@ -85,7 +85,7 @@ pub fn get_kdf_salt(user_id: i32) -> Vec<u8> {
 /// Get the hashed master password of a user account
 pub fn get_hashed_master(user_id: i32) -> Vec<u8> {
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
 
     // Find the hashed master password of the user account
     let mut hashed_master = Vec::new();
@@ -107,7 +107,7 @@ pub fn add_password(user_id: i32, account: &str, password: &str, hashed_master: 
     let encrypted_website = encrypt_password(website, hashed_master);
 
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
 
     // Find the largest entry_id, then we add 1 to it to define the new entry_id
     let mut statement = conn.prepare("SELECT MAX(entry_id) FROM passwords").expect("Failed to prepare statement");
@@ -126,7 +126,7 @@ pub fn add_password(user_id: i32, account: &str, password: &str, hashed_master: 
 /// Get all of the accounts for a user by decrypting all of the data
 pub fn get_accounts(hashed_master: &[u8; 32], user_id: i32) -> [Vec<String>; 3] {
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
 
     // Filter so only the user's accounts are shown
     let mut accounts = Vec::new();
@@ -156,7 +156,7 @@ pub fn get_accounts(hashed_master: &[u8; 32], user_id: i32) -> [Vec<String>; 3] 
 /// Find the entry_id of a account/website/password triplet
 pub fn find_entry_id(user_id: i32, account: &str, password: &str, website: &str, hashed_master: &[u8; 32]) -> i32 {
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
     let mut entry_id = 0;
 
     // We unencrypt the account names to see which one matchs to find the entry_id
@@ -188,7 +188,7 @@ pub fn find_entry_id(user_id: i32, account: &str, password: &str, website: &str,
 /// Remove a password/account/website triplet from the database by using the unique entry id
 pub fn remove_password(entry_id: i32) -> Result<(), Error> {
     // Open the database
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
 
     // Remove the password
     conn.execute(
@@ -202,7 +202,7 @@ pub fn remove_password(entry_id: i32) -> Result<(), Error> {
 /// Change the master password of a user
 pub fn change_master_password(user_id: i32, old_master_hashed: &[u8; 32], new_master_hashed: &[u8; 32], new_salt: &[u8; 32], new_kdf_salt: &[u8; 32]) {
     // Open the databases
-    let conn = rusqlite::Connection::open("storage/passwords.db").expect("Failed to open database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in memory database");
 
     // Update the users database
     conn.execute(
