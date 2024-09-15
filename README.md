@@ -16,7 +16,7 @@ I'm still working on pushing the project further, my main ideas to expand are to
 - If you want to make modifications or look through the code, clone the repository as you would normally
 
 ## Usage:
-1. Launch the Password Manager application.
+1. Launch the CryptKeeper application.
 2. Create a new account or log in with an existing account.
 3. Add your passwords by providing the necessary details.
 4. Use the search functionality to find specific passwords.
