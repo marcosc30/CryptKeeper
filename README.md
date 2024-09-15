@@ -1,4 +1,4 @@
-# Password Manager
+# CryptKeeper
 
 ## Description:
 Password Manager is a project I built in Rust. At first, it mainly started as a way of learning Rust, but I'm very glad I did it because it allowed me to expand the project and add features that would be somewhat unfeasible in other languages because of speed. 
