@@ -1,7 +1,7 @@
 # CryptKeeper
 
 ## Description:
-Password Manager is a project I built in Rust. At first, it mainly started as a way of learning Rust, but I'm very glad I did it because it allowed me to expand the project and add features that would be somewhat unfeasible in other languages because of speed. 
+CryptKeeper is a project I built in Rust. At first, it mainly started as a way of learning Rust, but I'm very glad I did it because it allowed me to expand the project and add features that would be somewhat unfeasible in other languages because of speed. 
 
 I'm still working on pushing the project further, my main ideas to expand are to add cloud SQL storage, add a mobile or web version, add account lockouts (this is somewhat integrated into the code already but is not turned on yet), and integrate checking for if a password has been featured in a leak (that last one is limited by the haveIbeenpwned API costing money, I might look for alternatives in the future).
 
